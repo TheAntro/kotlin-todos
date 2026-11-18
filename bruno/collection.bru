@@ -1,0 +1,52 @@
+meta {
+  name: kotlin-todos
+}
+
+auth {
+  mode: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+docs {
+  Collection auth is a bearer token from `{{accessToken}}`, which the pre-request script fetches from the OIDC machine-to-machine app configured in `.env` (copy `.env.example`).
+  Requests with auth "inherit" send it; requests with auth "none" don't.
+  The token is cached until 30 s before it expires; clear the `accessToken` runtime variable to force a new one.
+}
+
+script:pre-request {
+  // Fetches an access token with the client credentials grant; collection auth sends it as {{accessToken}}.
+  const axios = require("axios");
+
+  const token = bru.getVar("accessToken");
+  const expiresAt = bru.getVar("accessTokenExpiresAt") || 0;
+
+  if (!token || Date.now() > expiresAt - 30000) {
+    try {
+      const res = await axios.post(
+        bru.getProcessEnv("OIDC_TOKEN_URL"),
+        new URLSearchParams({
+          grant_type: "client_credentials",
+          // Logto only issues a JWT (not an opaque token) when a resource is requested
+          resource: bru.getProcessEnv("OIDC_RESOURCE"),
+          scope: bru.getProcessEnv("OIDC_SCOPE"),
+        }).toString(),
+        {
+          auth: {
+            username: bru.getProcessEnv("OIDC_CLIENT_ID"),
+            password: bru.getProcessEnv("OIDC_CLIENT_SECRET"),
+          },
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        },
+      );
+      bru.setVar("accessToken", res.data.access_token);
+      bru.setVar("accessTokenExpiresAt", Date.now() + res.data.expires_in * 1000);
+      console.log("Fetched new access token, expires in " + res.data.expires_in + " s");
+    } catch (err) {
+      const detail = err.response ? JSON.stringify(err.response.data) : err.message;
+      throw new Error("Token request failed: " + detail);
+    }
+  }
+}

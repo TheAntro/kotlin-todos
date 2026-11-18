@@ -70,6 +70,16 @@ Run these before you push.
 
 `mise run setup` installs a pre-commit hook ([lefthook](https://lefthook.dev), configured in `lefthook.yml`). When you commit, it formats the staged files and adds the fixes to the commit: Biome for the frontend, ktlint (Spotless) for the backend. Slower checks (detekt, typecheck, tests, Docker builds) run in CI on every pull request. To skip the hook once, use `git commit --no-verify`.
 
+## API requests (Bruno)
+
+`bruno/` is a [Bruno](https://www.usebruno.com) collection for calling the API by hand. A collection pre-request script gets an access token from a machine-to-machine app at your identity provider (client credentials grant), and requests whose auth is set to inherit send it as a bearer token.
+
+1. Copy `bruno/.env.example` to `bruno/.env` and fill in the token URL and the M2M app's client ID and secret.
+2. In Bruno, choose **Open Collection** and select the `bruno` folder.
+3. Pick the `local` environment and run a request.
+
+If Bruno can't load `axios` in the pre-request script, switch the collection to Developer Mode.
+
 ## Configuration
 
 Settings come from environment variables, with defaults that work for local development. The ones you're most likely to need:

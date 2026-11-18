@@ -6,6 +6,7 @@ Todos app monorepo: users sign in with Logto, then create, list, update and dele
 
 - `apps/backend` – Kotlin + Spring Boot REST API (Postgres, JWT resource server). See `apps/backend/AGENTS.md`.
 - `apps/frontend` – TanStack Start (React) UI. See `apps/frontend/AGENTS.md`.
+- `bruno/` – Bruno collection for calling the API by hand; a collection pre-request script fetches an M2M access token using credentials from `bruno/.env` (gitignored, see `bruno/.env.example`).
 - `compose.yaml` – local Postgres; `--profile app` runs the full stack from the production Dockerfiles.
 - `mise.toml` – pinned toolchain (Java, Node, pnpm) and all dev tasks.
 
