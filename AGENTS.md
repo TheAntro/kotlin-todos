@@ -16,9 +16,11 @@ Run from the repo root (`mise tasks` lists everything):
 
 - `mise install && mise run setup` – install toolchain and dependencies
 - `mise run dev` – Postgres + backend + frontend with hot reload
+- `mise run test` – all tests, backend and frontend in parallel (needs Docker)
 - `mise run backend:test` – backend tests (needs Docker)
 - `mise run backend:check` – backend lint + format check (`mise run backend:format` to fix)
 - `mise run frontend:check` – frontend lint + format check
+- `mise run frontend:test` – frontend unit tests (Vitest)
 
 ## Auth
 
