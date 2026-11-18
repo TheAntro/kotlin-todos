@@ -1,0 +1,104 @@
+# Toolchain + dev tasks. Get started with:
+#   mise install
+#   mise run setup
+#   mise run dev
+#
+# List all tasks with `mise tasks`.
+
+[tools]
+java = "temurin-25.0.5+8.0.LTS" # keep in sync with apps/backend/Dockerfile
+node = "26.12.1"                # keep in sync with apps/frontend/Dockerfile
+pnpm = "12.16.1"
+
+# ---------- Setup ----------
+
+[tasks.setup]
+description = "Install frontend deps and pre-fetch backend dependencies"
+depends = ["frontend:install"]
+dir = "{{config_root}}/apps/backend"
+run = "./gradlew --quiet dependencies > /dev/null"
+
+[tasks."frontend:install"]
+description = "Install frontend dependencies"
+dir = "{{config_root}}/apps/frontend"
+run = "pnpm install"
+
+# ---------- Database ----------
+
+[tasks."db:up"]
+description = "Start Postgres and wait until it's healthy"
+run = "docker compose up -d --wait postgres"
+
+[tasks."db:down"]
+description = "Stop Postgres (data is kept)"
+run = "docker compose stop postgres"
+
+[tasks."db:reset"]
+description = "Delete all local DB data and start a fresh Postgres"
+run = [
+  "docker compose rm -sf postgres",
+  "docker volume rm -f kotlin-todos_postgres-data",
+  "docker compose up -d --wait postgres",
+]
+
+[tasks."db:psql"]
+description = "Open a psql shell in the local database"
+raw = true
+run = "docker compose exec postgres psql -U todos -d todos"
+
+# ---------- Development (hot reload) ----------
+
+[tasks.dev]
+description = "Run Postgres, backend and frontend with hot reload"
+depends = ["backend:dev", "frontend:dev"]
+
+[tasks."backend:dev"]
+description = "Run the Spring Boot backend; recompiles on change and DevTools restarts it"
+depends = ["db:up"]
+dir = "{{config_root}}/apps/backend"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+./gradlew --quiet classes
+# Continuous compile in the background; DevTools picks up the new classes and restarts the app
+./gradlew --quiet --continuous classes &
+trap 'kill $! 2>/dev/null' EXIT
+./gradlew bootRun
+'''
+
+[tasks."frontend:dev"]
+description = "Run the Vite dev server with HMR"
+dir = "{{config_root}}/apps/frontend"
+run = "pnpm dev"
+
+# ---------- Full stack in Docker (production images) ----------
+
+[tasks."stack:up"]
+description = "Build and run the whole stack in Docker using the production Dockerfiles"
+run = "docker compose --profile app up --build"
+
+[tasks."stack:down"]
+description = "Stop the whole Docker stack"
+run = "docker compose --profile app down"
+
+# ---------- Checks ----------
+
+[tasks."backend:test"]
+description = "Run backend tests (uses Testcontainers, so Docker must be running)"
+dir = "{{config_root}}/apps/backend"
+run = "./gradlew test"
+
+[tasks."backend:check"]
+description = "Lint + format check the backend (ktlint via Spotless, detekt)"
+dir = "{{config_root}}/apps/backend"
+run = "./gradlew spotlessCheck detekt"
+
+[tasks."backend:format"]
+description = "Format the backend with ktlint"
+dir = "{{config_root}}/apps/backend"
+run = "./gradlew spotlessApply"
+
+[tasks."frontend:check"]
+description = "Lint + format check the frontend"
+dir = "{{config_root}}/apps/frontend"
+run = "pnpm check"

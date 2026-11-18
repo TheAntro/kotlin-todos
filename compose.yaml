@@ -1,0 +1,50 @@
+# Local development services.
+#
+#   docker compose up -d                 -> Postgres only (use with `mise run dev` for hot reload)
+#   docker compose --profile app up      -> full stack from the production Dockerfiles
+#
+# Credentials match the defaults in apps/backend/src/main/resources/application.properties.
+
+name: kotlin-todos
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: todos
+      POSTGRES_USER: todos
+      POSTGRES_PASSWORD: todos
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Postgres 18+ images keep data under /var/lib/postgresql/<major>/, so mount the parent
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U todos -d todos"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  backend:
+    profiles: [app]
+    build: ./apps/backend
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/todos
+      DB_USERNAME: todos
+      DB_PASSWORD: todos
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    profiles: [app]
+    build: ./apps/frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres-data:

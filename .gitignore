@@ -1,0 +1,25 @@
+# Repo-wide ignores. App-specific build output is ignored in apps/*/.gitignore.
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env files and secrets (commit a .env.example instead)
+.env
+.env.*
+!.env.example
+*.local
+
+# Editors
+.idea/
+*.iml
+*.swp
+
+# Logs
+*.log
+
+# Local tool overrides
+mise.local.toml
+.mise.local.toml
+.claude/settings.local.json
+CLAUDE.local.md

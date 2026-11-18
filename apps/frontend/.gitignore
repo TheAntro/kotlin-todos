@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+.output/
+.nitro/
+.vinxi/
+.wrangler/
+
+# Generated caches
+.tanstack/
+__unconfig*

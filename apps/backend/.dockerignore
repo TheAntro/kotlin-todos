@@ -1,0 +1,15 @@
+# Keep the build context small and reproducible: build inside the image only
+.gradle/
+.kotlin/
+build/
+bin/
+out/
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.DS_Store
+HELP.md
+Dockerfile
+.dockerignore
