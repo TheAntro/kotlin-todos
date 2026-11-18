@@ -9,14 +9,19 @@
 java = "temurin-25.0.5+8.0.LTS" # keep in sync with apps/backend/Dockerfile
 node = "26.12.1"                # keep in sync with apps/frontend/Dockerfile
 pnpm = "12.16.1"
+lefthook = "2.2.2"
 
 # ---------- Setup ----------
 
 [tasks.setup]
-description = "Install frontend deps and pre-fetch backend dependencies"
-depends = ["frontend:install"]
+description = "Install git hooks and frontend deps, pre-fetch backend dependencies"
+depends = ["hooks:install", "frontend:install"]
 dir = "{{config_root}}/apps/backend"
 run = "./gradlew --quiet dependencies > /dev/null"
+
+[tasks."hooks:install"]
+description = "Install the git hooks from lefthook.yml"
+run = "lefthook install"
 
 [tasks."frontend:install"]
 description = "Install frontend dependencies"
@@ -102,3 +107,8 @@ run = "./gradlew spotlessApply"
 description = "Lint + format check the frontend"
 dir = "{{config_root}}/apps/frontend"
 run = "pnpm check"
+
+[tasks."frontend:typecheck"]
+description = "Type-check the frontend with tsc"
+dir = "{{config_root}}/apps/frontend"
+run = "pnpm typecheck"
