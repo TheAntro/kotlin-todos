@@ -1,0 +1,83 @@
+# Runs on every PR (opened, updated, reopened) and on pushes to main.
+# Tool versions come from mise.toml, and the steps call the same mise tasks you run locally.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push to a PR cancels the run for the previous commit
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (check + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: java
+
+      # Caches Gradle dependencies and the wrapper between runs
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Lint + format check
+        run: mise run backend:check
+
+      # Testcontainers uses the Docker daemon that ships with the runner
+      - name: Test
+        run: mise run backend:test
+
+  frontend:
+    name: Frontend (check + typecheck + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: node pnpm
+
+      # pnpm installs with --frozen-lockfile automatically when CI=true
+      - name: Install dependencies
+        run: mise run frontend:install
+
+      - name: Lint + format check
+        run: mise run frontend:check
+
+      - name: Typecheck
+        run: mise run frontend:typecheck
+
+      - name: Build
+        run: pnpm build
+        working-directory: apps/frontend
+
+  docker:
+    name: Docker image (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Build only; nothing is pushed until we add a deploy step
+      - uses: docker/build-push-action@v7
+        with:
+          context: apps/${{ matrix.app }}
+          push: false
+          tags: kotlin-todos-${{ matrix.app }}:ci
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}

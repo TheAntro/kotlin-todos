@@ -1,0 +1,18 @@
+# Git hooks, installed by `mise run setup` (or `mise run hooks:install`).
+# Only fast, auto-fixing checks run here; CI re-runs everything (see .github/workflows/ci.yml).
+# Skip once with `git commit --no-verify`, or set LEFTHOOK=0.
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: frontend format + lint
+      root: apps/frontend/
+      glob: "*.{js,jsx,ts,tsx,json,jsonc,css}"
+      run: pnpm biome check --write --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
+      stage_fixed: true
+
+    - name: backend format
+      root: apps/backend/
+      glob: "*.{kt,kts}"
+      run: ./gradlew --quiet spotlessApply
+      stage_fixed: true

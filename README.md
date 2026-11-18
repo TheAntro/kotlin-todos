@@ -11,7 +11,7 @@ You need [mise](https://mise.jdx.dev) and Docker. mise installs the right Java, 
 
 ```sh
 mise install       # install Java, Node and pnpm
-mise run setup     # install frontend packages and download backend dependencies
+mise run setup     # install git hooks and frontend packages, download backend dependencies
 mise run dev       # start everything with hot reload
 ```
 
@@ -39,6 +39,7 @@ Run these before you push.
 | `mise run backend:check` | Check the backend's formatting (ktlint) and run static analysis (detekt). |
 | `mise run backend:format` | Fix the backend's formatting. |
 | `mise run frontend:check` | Lint and format-check the frontend. To fix problems, run `pnpm biome check --write` in `apps/frontend`. |
+| `mise run frontend:typecheck` | Type-check the frontend with TypeScript. |
 
 ### Database
 
@@ -62,6 +63,11 @@ Run these before you push.
 | --- | --- |
 | `mise run setup` | First time, and after pulling changes that add dependencies. |
 | `mise run frontend:install` | Reinstall only the frontend packages. |
+| `mise run hooks:install` | Reinstall only the git hooks. |
+
+### Git hooks
+
+`mise run setup` installs a pre-commit hook ([lefthook](https://lefthook.dev), configured in `lefthook.yml`). When you commit, it formats the staged files and adds the fixes to the commit: Biome for the frontend, ktlint (Spotless) for the backend. Slower checks (detekt, typecheck, tests, Docker builds) run in CI on every pull request. To skip the hook once, use `git commit --no-verify`.
 
 ## Configuration
 
