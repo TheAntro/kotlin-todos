@@ -1,16 +1,21 @@
 package dev.antro.todos.hello
 
+import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
 data class HelloResponse(
     val message: String,
+    val subject: String,
 )
 
 @RestController
 @RequestMapping("/api/v1/hello")
 class HelloController {
     @GetMapping
-    fun hello(): HelloResponse = HelloResponse("Hello World!")
+    fun hello(
+        @AuthenticationPrincipal jwt: Jwt,
+    ): HelloResponse = HelloResponse("Hello World!", requireNotNull(jwt.subject))
 }

@@ -11,6 +11,10 @@ node = "26.12.1"                # keep in sync with apps/frontend/Dockerfile
 pnpm = "12.16.1"
 lefthook = "2.2.2"
 
+# Local settings and secrets from the gitignored .env (see .env.example); it's fine if the file is missing
+[env]
+_.file = ".env"
+
 # ---------- Setup ----------
 
 [tasks.setup]
