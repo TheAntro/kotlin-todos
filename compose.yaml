@@ -32,6 +32,9 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/todos
       DB_USERNAME: todos
       DB_PASSWORD: todos
+      # Read from .env next to this file (see .env.example)
+      JWT_ISSUER_URI: ${JWT_ISSUER_URI:-}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-https://api.todos.local}
     ports:
       - "8080:8080"
     depends_on:

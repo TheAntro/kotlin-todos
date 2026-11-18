@@ -12,6 +12,7 @@ You need [mise](https://mise.jdx.dev) and Docker. mise installs the right Java, 
 ```sh
 mise install       # install Java, Node and pnpm
 mise run setup     # install git hooks and frontend packages, download backend dependencies
+cp .env.example .env  # then set JWT_ISSUER_URI to your OIDC issuer
 mise run dev       # start everything with hot reload
 ```
 
@@ -75,9 +76,12 @@ Settings come from environment variables, with defaults that work for local deve
 
 | Variable | What it does |
 | --- | --- |
-| `JWT_ISSUER_URI` | Logto issuer URL that the backend trusts for access tokens. |
+| `JWT_ISSUER_URI` | **Required.** OpenID Connect issuer that the backend trusts for access tokens (must match the tokens' `iss` claim). It has no default, so it stays out of the repo. Tests don't need it. |
+| `JWT_AUDIENCE` | API/resource identifier that tokens must be issued for (`aud` claim) (default `https://api.todos.local`). |
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | Database connection. Defaults to the local Postgres from `compose.yaml`. |
 | `PORT` | Backend port (default `8080`). |
 | `POSTGRES_PORT` | Host port for local Postgres (default `5432`). Change it if something else already uses 5432, and update `DB_URL` to match. |
+
+For local development, put these in a `.env` file in the repo root (copy `.env.example`). It's gitignored, and both mise and `docker compose` load it automatically.
 
 Never commit secrets.

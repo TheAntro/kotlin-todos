@@ -1,6 +1,7 @@
 package dev.antro.todos.hello
 
 import dev.antro.todos.TestcontainersConfiguration
+import org.hamcrest.Matchers.startsWith
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -22,11 +23,12 @@ class HelloControllerTest(
         mockMvc
             .get("/api/v1/hello") {
                 accept = MediaType.APPLICATION_JSON
-                with(jwt())
+                with(jwt().jwt { it.subject("user-123") })
             }.andExpect {
                 status { isOk() }
                 content { contentType(MediaType.APPLICATION_JSON) }
                 jsonPath("$.message") { value("Hello World!") }
+                jsonPath("$.subject") { value("user-123") }
             }
     }
 
@@ -37,6 +39,14 @@ class HelloControllerTest(
                 accept = MediaType.APPLICATION_JSON
             }.andExpect {
                 status { isUnauthorized() }
+                header { string("WWW-Authenticate", startsWith("Bearer")) }
             }
+    }
+
+    @Test
+    fun `health endpoint is public`() {
+        mockMvc.get("/actuator/health").andExpect {
+            status { isOk() }
+        }
     }
 }
