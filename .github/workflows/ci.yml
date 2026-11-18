@@ -38,7 +38,7 @@ jobs:
         run: mise run backend:test
 
   frontend:
-    name: Frontend (check + typecheck + build)
+    name: Frontend (check + typecheck + test + build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -56,6 +56,9 @@ jobs:
 
       - name: Typecheck
         run: mise run frontend:typecheck
+
+      - name: Unit tests
+        run: mise run frontend:test
 
       - name: Build
         run: pnpm build

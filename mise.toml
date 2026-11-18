@@ -92,6 +92,10 @@ run = "docker compose --profile app down"
 
 # ---------- Checks ----------
 
+[tasks.test]
+description = "Run all tests (backend and frontend in parallel)"
+depends = ["backend:test", "frontend:test"]
+
 [tasks."backend:test"]
 description = "Run backend tests (uses Testcontainers, so Docker must be running)"
 dir = "{{config_root}}/apps/backend"
@@ -111,6 +115,11 @@ run = "./gradlew spotlessApply"
 description = "Lint + format check the frontend"
 dir = "{{config_root}}/apps/frontend"
 run = "pnpm check"
+
+[tasks."frontend:test"]
+description = "Run frontend unit tests (Vitest)"
+dir = "{{config_root}}/apps/frontend"
+run = "pnpm test"
 
 [tasks."frontend:typecheck"]
 description = "Type-check the frontend with tsc"
