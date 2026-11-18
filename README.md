@@ -4,6 +4,7 @@ A todo app: sign in with Logto, then manage your own todos.
 
 - `apps/backend` – Kotlin + Spring Boot REST API with Postgres
 - `apps/frontend` – TanStack Start (React) UI
+- `e2e` – Playwright end-to-end tests for the whole stack
 
 ## Getting started
 
@@ -36,7 +37,7 @@ Run these before you push.
 
 | Command | When to use it |
 | --- | --- |
-| `mise run test` | Run all tests: backend and frontend in parallel. Docker must be running for the backend tests. |
+| `mise run test` | Run the backend and frontend tests in parallel. Docker must be running for the backend tests. Doesn't include the e2e tests, which need a running app (see [End-to-end tests](#end-to-end-tests-playwright)). |
 | `mise run backend:test` | Run the backend tests. Docker must be running, because the tests start their own Postgres. |
 | `mise run backend:check` | Check the backend's formatting (ktlint) and run static analysis (detekt). |
 | `mise run backend:format` | Fix the backend's formatting. |
@@ -66,11 +67,12 @@ Run these before you push.
 | --- | --- |
 | `mise run setup` | First time, and after pulling changes that add dependencies. |
 | `mise run frontend:install` | Reinstall only the frontend packages. |
+| `mise run e2e:install` | Reinstall only the e2e test packages and the Playwright browser. |
 | `mise run hooks:install` | Reinstall only the git hooks. |
 
 ### Git hooks
 
-`mise run setup` installs a pre-commit hook ([lefthook](https://lefthook.dev), configured in `lefthook.yml`). When you commit, it formats the staged files and adds the fixes to the commit: Biome for the frontend, ktlint (Spotless) for the backend. Slower checks (detekt, typecheck, tests, Docker builds) run in CI on every pull request. To skip the hook once, use `git commit --no-verify`.
+`mise run setup` installs a pre-commit hook ([lefthook](https://lefthook.dev), configured in `lefthook.yml`). When you commit, it formats the staged files and adds the fixes to the commit: Biome for the frontend and e2e tests, ktlint (Spotless) for the backend. Slower checks (detekt, typecheck, tests, Docker builds) run in CI on every pull request. To skip the hook once, use `git commit --no-verify`.
 
 ## Sign-in
 
@@ -82,6 +84,28 @@ To set it up in the Logto console:
 2. Add `http://localhost:3000/callback` as a redirect URI and `http://localhost:3000/` as a post sign-out redirect URI.
 3. Make sure an API resource with the backend's `JWT_AUDIENCE` (default `https://api.todos.local`) exists.
 4. Put the endpoint, app ID and app secret in `.env` as `LOGTO_ENDPOINT`, `LOGTO_APP_ID` and `LOGTO_APP_SECRET`, and set `SESSION_SECRET` (`openssl rand -hex 32`).
+
+## End-to-end tests (Playwright)
+
+`e2e/` holds the Playwright tests, the main test suite for the app as a whole. They drive a real browser against the running app and sign in through Logto with a real test user, so they cover the frontend, backend, database and sign-in together.
+
+1. In Logto, create a test user that signs in with a username (or email) and password, with no MFA or captcha. A separate Logto tenant for development and tests keeps test users away from real ones.
+2. Put its credentials in `.env` as `E2E_USERNAME` and `E2E_PASSWORD`, next to the sign-in settings above.
+3. Start the app with `mise run dev` (or `mise run stack:up`), then run the tests:
+
+| Command | When to use it |
+| --- | --- |
+| `mise run e2e:test` | Run all e2e tests headless. `cd e2e && pnpm report` opens the HTML report afterwards. |
+| `mise run e2e:ui` | Playwright's UI mode: pick tests, watch them run, step through traces. |
+| `mise run e2e:check` | Lint, format check and type-check the tests. |
+
+How the tests are organised:
+
+- A `setup` project signs in once and saves the browser session to `e2e/playwright/.auth/` (gitignored). Tests in `tests/signed-in/` start from it, already signed in.
+- Tests in `tests/signed-out/` start without a session and cover sign-in and sign-out themselves. A test that signs out must sign in on its own, because signing out revokes the shared session's refresh token.
+- Todos belong to the signed-in user and tests run in parallel with the same user, so each test should create its own data (for example with unique titles) and check only that.
+
+CI runs them in the `E2E (Playwright)` job against the Docker stack. It needs these repository secrets: `JWT_ISSUER_URI`, `LOGTO_ENDPOINT`, `LOGTO_APP_ID`, `LOGTO_APP_SECRET`, `SESSION_SECRET`, `E2E_USERNAME` and `E2E_PASSWORD`, and the runner has to be able to reach Logto. Pull requests from forks don't get secrets, so the job fails there. The HTML report is uploaded as the `playwright-report` artifact.
 
 ## API requests (Bruno)
 
@@ -105,6 +129,8 @@ Settings come from environment variables, with defaults that work for local deve
 | `SESSION_SECRET` | **Required for sign-in.** At least 32 characters; encrypts the frontend's session cookie. Changing it signs everyone out. |
 | `APP_BASE_URL` | Public URL of the frontend (default `http://localhost:3000`). Logto redirects back to `<APP_BASE_URL>/callback`. Use `https://` in production so the cookie is `Secure`. |
 | `API_BASE_URL` | Where the frontend server reaches the backend (default `http://localhost:8080`). |
+| `E2E_USERNAME`, `E2E_PASSWORD` | Logto test user for the e2e tests. |
+| `E2E_BASE_URL` | App URL the e2e tests open (default `http://localhost:3000`). |
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | Database connection. Defaults to the local Postgres from `compose.yaml`. |
 | `PORT` | Backend port (default `8080`). |
 | `POSTGRES_PORT` | Host port for local Postgres (default `5432`). Change it if something else already uses 5432, and update `DB_URL` to match. |

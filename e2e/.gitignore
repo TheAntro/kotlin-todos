@@ -1,0 +1,7 @@
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+# Saved signed-in session (contains tokens)
+/playwright/.auth/

@@ -18,8 +18,8 @@ _.file = ".env"
 # ---------- Setup ----------
 
 [tasks.setup]
-description = "Install git hooks and frontend deps, pre-fetch backend dependencies"
-depends = ["hooks:install", "frontend:install"]
+description = "Install git hooks, frontend and e2e deps, pre-fetch backend dependencies"
+depends = ["hooks:install", "frontend:install", "e2e:install"]
 dir = "{{config_root}}/apps/backend"
 run = "./gradlew --quiet dependencies > /dev/null"
 
@@ -31,6 +31,11 @@ run = "lefthook install"
 description = "Install frontend dependencies"
 dir = "{{config_root}}/apps/frontend"
 run = "pnpm install"
+
+[tasks."e2e:install"]
+description = "Install e2e test dependencies and the Playwright browser"
+dir = "{{config_root}}/e2e"
+run = ["pnpm install", "pnpm exec playwright install chromium"]
 
 # ---------- Database ----------
 
@@ -93,7 +98,7 @@ run = "docker compose --profile app down"
 # ---------- Checks ----------
 
 [tasks.test]
-description = "Run all tests (backend and frontend in parallel)"
+description = "Run backend and frontend tests in parallel (not e2e, which needs a running app)"
 depends = ["backend:test", "frontend:test"]
 
 [tasks."backend:test"]
@@ -125,3 +130,22 @@ run = "pnpm test"
 description = "Type-check the frontend with tsc"
 dir = "{{config_root}}/apps/frontend"
 run = "pnpm typecheck"
+
+# ---------- End-to-end tests (Playwright) ----------
+# Run against an already running app (`mise run dev` or `mise run stack:up`).
+
+[tasks."e2e:test"]
+description = "Run the Playwright e2e tests against the running app"
+dir = "{{config_root}}/e2e"
+run = "pnpm test"
+
+[tasks."e2e:ui"]
+description = "Open Playwright's UI mode to run and debug e2e tests"
+dir = "{{config_root}}/e2e"
+raw = true
+run = "pnpm test:ui"
+
+[tasks."e2e:check"]
+description = "Lint, format check and type-check the e2e tests"
+dir = "{{config_root}}/e2e"
+run = ["pnpm check", "pnpm typecheck"]
