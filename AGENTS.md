@@ -6,6 +6,7 @@ Todos app monorepo: users sign in with Logto, then create, list, update and dele
 
 - `apps/backend` – Kotlin + Spring Boot REST API (Postgres, JWT resource server). See `apps/backend/AGENTS.md`.
 - `apps/frontend` – TanStack Start (React) UI. See `apps/frontend/AGENTS.md`.
+- `e2e/` – Playwright end-to-end tests, the main test suite. They run against the running app and sign in with a real Logto test user (`E2E_USERNAME`/`E2E_PASSWORD`). See `e2e/AGENTS.md`.
 - `bruno/` – Bruno collection for calling the API by hand; a collection pre-request script fetches an M2M access token using credentials from `bruno/.env` (gitignored, see `bruno/.env.example`).
 - `compose.yaml` – local Postgres; `--profile app` runs the full stack from the production Dockerfiles.
 - `mise.toml` – pinned toolchain (Java, Node, pnpm) and all dev tasks.
@@ -16,7 +17,8 @@ Run from the repo root (`mise tasks` lists everything):
 
 - `mise install && mise run setup` – install toolchain and dependencies
 - `mise run dev` – Postgres + backend + frontend with hot reload
-- `mise run test` – all tests, backend and frontend in parallel (needs Docker)
+- `mise run test` – backend and frontend tests in parallel (needs Docker; excludes e2e)
+- `mise run e2e:test` – Playwright e2e tests against the running app (`mise run dev` first); `mise run e2e:check` lints them
 - `mise run backend:test` – backend tests (needs Docker)
 - `mise run backend:check` – backend lint + format check (`mise run backend:format` to fix)
 - `mise run frontend:check` – frontend lint + format check

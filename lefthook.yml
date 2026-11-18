@@ -11,6 +11,12 @@ pre-commit:
       run: pnpm biome check --write --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
       stage_fixed: true
 
+    - name: e2e format + lint
+      root: e2e/
+      glob: "*.{ts,json}"
+      run: pnpm biome check --write --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
+      stage_fixed: true
+
     - name: backend format
       root: apps/backend/
       glob: "*.{kt,kts}"
