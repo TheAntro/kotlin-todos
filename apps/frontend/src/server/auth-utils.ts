@@ -12,6 +12,19 @@ export function safeReturnTo(value: string | null | undefined): string {
 }
 
 /**
+ * The callback URL as the browser saw it: the request's path and query on `appBaseUrl`. Behind
+ * Cloud Run the request reaches the server over plain http, and Logto rejects a callback whose
+ * origin doesn't match the redirect URI (`<appBaseUrl>/callback`) it signed in with.
+ */
+export function publicCallbackUrl(
+	requestUrl: string,
+	appBaseUrl: string,
+): string {
+	const { pathname, search } = new URL(requestUrl);
+	return `${appBaseUrl}${pathname}${search}`;
+}
+
+/**
  * True when a token refresh failed because the session can't get tokens anymore, as opposed
  * to a temporary failure (Logto down, timeout, rate limit, 5xx) that shouldn't sign anyone out.
  */
