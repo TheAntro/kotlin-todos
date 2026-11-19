@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { safeReturnTo } from "#/server/auth-utils";
+import { publicCallbackUrl, safeReturnTo } from "#/server/auth-utils";
+import { serverEnv } from "#/server/env.server";
 import { getLogto, redirectTo } from "#/server/logto.server";
 
 // Logto redirects here after sign-in; exchange the code for tokens and store them in the session.
@@ -9,7 +10,9 @@ export const Route = createFileRoute("/callback")({
 			GET: async ({ request }) => {
 				const logto = await getLogto();
 				try {
-					await logto.client.handleSignInCallback(request.url);
+					await logto.client.handleSignInCallback(
+						publicCallbackUrl(request.url, serverEnv().appBaseUrl),
+					);
 				} catch (error) {
 					console.error("Sign-in callback failed", error);
 					return new Response("Sign-in failed. Please try again.", {

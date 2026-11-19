@@ -1,6 +1,6 @@
 import { LogtoClientError, LogtoRequestError } from "@logto/node";
 import { describe, expect, it } from "vitest";
-import { isSessionDead, safeReturnTo } from "./auth-utils";
+import { isSessionDead, publicCallbackUrl, safeReturnTo } from "./auth-utils";
 
 describe("safeReturnTo", () => {
 	it.each([
@@ -22,6 +22,17 @@ describe("safeReturnTo", () => {
 		["undefined", undefined],
 	])("falls back to / for %s", (_, input) => {
 		expect(safeReturnTo(input)).toBe("/");
+	});
+});
+
+describe("publicCallbackUrl", () => {
+	it("puts the request's path and query on the public base URL", () => {
+		expect(
+			publicCallbackUrl(
+				"http://internal:8080/callback?code=a%2Bb&state=s",
+				"https://app.example.com",
+			),
+		).toBe("https://app.example.com/callback?code=a%2Bb&state=s");
 	});
 });
 
