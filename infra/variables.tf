@@ -15,8 +15,13 @@ variable "domain" {
   type        = string
 }
 
+variable "verify_domain" {
+  description = "Domain verified with Google for the domain mapping; the parent of var.domain, e.g. todos.antro.dev"
+  type        = string
+}
+
 variable "cloudflare_zone_id" {
-  description = "Cloudflare zone that holds var.domain (used by the custom domain, Stage 4)"
+  description = "Cloudflare zone that holds var.domain and var.verify_domain"
   type        = string
 }
 

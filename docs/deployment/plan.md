@@ -1,6 +1,6 @@
 # Deployment plan: Cloud Run + Neon + Cloudflare
 
-Status: **in progress**: Stages 1–2 done (bootstrap applied, WIF check green); Stage 3 code written, not yet applied. Target: deploy the frontend and backend to Google Cloud Run, the database to Neon and DNS to Cloudflare. All infra is in Terraform, and infra changes, migrations and deployments run in one GitHub Actions workflow. GitHub Actions reaches GCP through Workload Identity Federation (WIF), so there are no service account keys.
+Status: **in progress**: Stages 1–3 done (main stack applied by CI; frontend `run.app` serves the placeholder, backend returns 403 without an ID token). Stage 4 code written on branch `custom-domain`, not yet applied; see [Stage 4 implementation notes](#stage-4-implementation-notes). Target: deploy the frontend and backend to Google Cloud Run, the database to Neon and DNS to Cloudflare. All infra is in Terraform, and infra changes, migrations and deployments run in one GitHub Actions workflow. GitHub Actions reaches GCP through Workload Identity Federation (WIF), so there are no service account keys.
 
 Scope: this increment builds a **staging** environment that deploys on every push to `main` and runs the e2e tests against it. Production and PR previews are later increments (see [Later increments](#later-increments)). The Terraform is written per environment so production can reuse it.
 
@@ -137,6 +137,37 @@ Chosen: **Cloud Run domain mapping** for the frontend (`staging.todos.antro.dev`
 Alternative if needed later: a global external HTTPS load balancer with a serverless network endpoint group (about $18/month). Works in any region, allows Cloudflare proxying (orange cloud) and Cloud Armor.
 
 **Done when:** `https://staging.todos.antro.dev` serves the placeholder with a valid certificate (issuing can take up to an hour).
+
+#### Stage 4 implementation notes
+
+Handoff for whoever picks this up. Provider schemas were checked against `hashicorp/google` 8.12 and `cloudflare/cloudflare` 5.29.
+
+**Done on branch `custom-domain`:** the Cloudflare provider; `infra/modules/custom-domain/` (verification token → TXT on `todos.antro.dev` → `google_site_verification_web_resource` → Cloud Run domain mapping, plus the grey-cloud CNAME to `ghs.googlehosted.com`), called from `infra/domain.tf` with a new `verify_domain` variable; `CLOUDFLARE_API_TOKEN` in the `infra` job's env; and the `siteverification` scope on the `google` provider (a local plan failed with insufficient scopes without it). `mise run infra:validate` passes.
+
+**Local plan:** user ADC credentials have their scopes fixed at login, so the provider's `scopes` don't help and the verification token read fails. To plan locally, log in once with the extra scope:
+```sh
+gcloud auth application-default login --scopes=https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/userinfo.email,https://www.googleapis.com/auth/siteverification
+mise exec -- sh -c 'cd infra && TF_VAR_jwt_issuer_uri="$JWT_ISSUER_URI" TF_VAR_logto_endpoint="$LOGTO_ENDPOINT" TF_VAR_logto_app_id="$LOGTO_APP_ID" TF_VAR_logto_app_secret="$LOGTO_APP_SECRET" terraform plan -lock=false -var-file=envs/staging.tfvars'
+```
+Expect only additions (2 DNS records, the web resource, the domain mapping). CI (WIF impersonating `terraform@`) honors the provider's scopes. **Apply only through CI** (merge to `main`): verification and the mapping must be done by `terraform@`. If you apply locally, *you* become the verified owner and the CI account can't manage the mapping later.
+
+**To do:**
+
+1. Add `CLOUDFLARE_API_TOKEN` to the GitHub `staging` environment secrets if it isn't there yet, then merge to `main`. If the first apply fails verification (TXT not yet propagated), re-run the workflow with dispatch.
+2. **Verify:** `curl -sI https://staging.todos.antro.dev` → 200 with a Google-issued certificate (can take up to an hour; `gcloud beta run domain-mappings describe --domain staging.todos.antro.dev --region europe-north1` shows progress). Then mark Stage 4 done here.
+
+**Risks to watch:**
+
+- **Site Verification scope in CI:** the provider requests it, and impersonated WIF tokens should honor that. If the CI apply still fails with insufficient scopes, that assumption is wrong; check the auth step's credentials type.
+- **Owner in Search Console:** only `terraform@` is an owner, so the domain doesn't appear in your own Search Console. Add yourself there by hand if you want to see it; don't manage it in Terraform.
+- **Existing records:** checked 2026-11-19, `todos.antro.dev` and `staging.todos.antro.dev` have no A/AAAA/CNAME/TXT records, so nothing clashes. Never put a CNAME on `todos.antro.dev` itself: it would block the verification TXT.
+
+**Lessons from Stages 2–3** (for Stage 5 and production):
+
+- The bootstrap needs `cloudresourcemanager` and `serviceusage` enabled with gcloud before its first plan (now in `infra/bootstrap/README.md`).
+- `NEON_API_KEY` is a **personal** key (the console offers no org keys on the free plan), so `neon_org_id` is required in the tfvars.
+- `deployer@` can't read Terraform state, and the `infra` job is skipped when `infra/**` didn't change. So in Stage 5 the build/deploy jobs can't rely on `terraform output` from that job: derive the values instead (registry `europe-north1-docker.pkg.dev/<GCP_PROJECT_ID>/images`, services `backend`/`frontend`, migration secrets `migrate-db-url` and `backend-db-password`), or always run a cheap `terraform output` step as `terraform@`.
+- Stage 5 open check: whether `gcloud run services update --image` sets `template.revision` or labels that the next `terraform apply` would fight over (`ignore_changes` currently covers the image, `client` and `client_version`).
 
 ### Stage 5: App deployment
 

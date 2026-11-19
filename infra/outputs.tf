@@ -34,3 +34,7 @@ output "migrate_db_password_secret" {
 output "db_username" {
   value = module.database.username
 }
+
+output "domain_mapping_status" {
+  value = module.frontend_domain.mapping_status
+}

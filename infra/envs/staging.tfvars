@@ -4,6 +4,7 @@
 project_id         = "kotlin-todos-staging"
 region             = "europe-north1"
 domain             = "staging.todos.antro.dev"
+verify_domain      = "todos.antro.dev"                  # verified with Google; covers production too
 cloudflare_zone_id = "09d7c16d678a2d94066bb618918e241e" # antro.dev
 neon_region        = "aws-eu-central-1"
 neon_org_id        = "org-ancient-art-22557950"

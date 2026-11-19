@@ -10,6 +10,10 @@ terraform {
       source  = "kislerdm/neon"
       version = "~> 0.18.0"
     }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 5.29"
+    }
     random = {
       source  = "hashicorp/random"
       version = "~> 3.7"
@@ -26,7 +30,17 @@ terraform {
 provider "google" {
   project = var.project_id
   region  = var.region
+
+  # The defaults plus Site Verification, for the custom domain's verification token
+  scopes = [
+    "https://www.googleapis.com/auth/cloud-platform",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/siteverification",
+  ]
 }
 
 # Reads the API key from NEON_API_KEY
 provider "neon" {}
+
+# Reads the API token from CLOUDFLARE_API_TOKEN (DNS Edit on the zone only)
+provider "cloudflare" {}
