@@ -178,3 +178,42 @@ jobs:
               --image "$REGISTRY_HOST/${{ vars.GCP_PROJECT_ID }}/images/$service:${{ github.sha }}" \
               --quiet
           done
+
+  # Playwright against staging, signing in with the real Logto test user. The tests create their
+  # own uniquely named data, so what piles up in staging is harmless.
+  e2e:
+    name: E2E against staging
+    needs: deploy
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      E2E_BASE_URL: https://staging.todos.antro.dev
+      E2E_USERNAME: ${{ secrets.E2E_USERNAME }}
+      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: node pnpm
+
+      - name: Install dependencies
+        run: |
+          mise run e2e:install
+          pnpm exec playwright install-deps chromium
+        working-directory: e2e
+
+      # The new revisions passed their startup probes in deploy; this just fails fast if the site is down
+      - name: Check the site is up
+        run: curl --fail --silent --retry 10 --retry-delay 3 --retry-all-errors --output /dev/null "$E2E_BASE_URL/"
+
+      - name: E2E tests
+        run: mise run e2e:test
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-staging
+          path: e2e/playwright-report/
+          retention-days: 14
