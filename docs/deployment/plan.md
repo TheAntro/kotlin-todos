@@ -1,13 +1,13 @@
 # Deployment plan: Cloud Run + Neon + Cloudflare
 
-Status: **planned, not started**. Target: deploy the frontend and backend to Google Cloud Run, the database to Neon and DNS to Cloudflare. All infra is in Terraform, and infra changes, migrations and deployments run in one GitHub Actions workflow. GitHub Actions reaches GCP through Workload Identity Federation (WIF), so there are no service account keys.
+Status: **in progress**: Stage 1 done; Stage 2 code written (`infra/bootstrap/`, minimal `deploy.yml`), not yet applied. Target: deploy the frontend and backend to Google Cloud Run, the database to Neon and DNS to Cloudflare. All infra is in Terraform, and infra changes, migrations and deployments run in one GitHub Actions workflow. GitHub Actions reaches GCP through Workload Identity Federation (WIF), so there are no service account keys.
 
 Scope: this increment builds a **staging** environment that deploys on every push to `main` and runs the e2e tests against it. Production and PR previews are later increments (see [Later increments](#later-increments)). The Terraform is written per environment so production can reuse it.
 
 ## Architecture
 
 ```
-browser ──https──▶ Cloudflare DNS ──▶ Cloud Run: frontend (public, staging.<domain>)
+browser ──https──▶ Cloudflare DNS ──▶ Cloud Run: frontend (public, staging.todos.antro.dev)
                                             │  server-side fetch
                                             │  X-Serverless-Authorization: <Google ID token>
                                             │  Authorization: Bearer <Logto token>
@@ -52,7 +52,7 @@ Other non-secret settings (region, domain, Neon region, Logto API resource) go i
 | backend | `JWT_AUDIENCE` | Logto API resource | plain |
 | backend | `SPRING_FLYWAY_ENABLED` | `false` (the workflow migrates) | plain |
 | backend | `API_DOCS_ENABLED` | `false` | plain |
-| frontend | `APP_BASE_URL` | `https://staging.<domain>` (`https` turns on the `__Host-` secure session cookie) | plain |
+| frontend | `APP_BASE_URL` | `https://staging.todos.antro.dev` (`https` turns on the `__Host-` secure session cookie) | plain |
 | frontend | `API_BASE_URL` | backend service `uri` | plain, Terraform reference |
 | frontend | `BACKEND_AUDIENCE` | backend custom audience | plain (new) |
 | frontend | `JWT_AUDIENCE` | Logto API resource | plain |
@@ -72,7 +72,7 @@ Each stage ends with a check that must pass before the next starts. `deploy.yml`
 | GCP | Google account, **billing account**, project `kotlin-todos-staging` linked to it. `gcloud auth application-default login` for the bootstrap. |
 | Neon | Sign up and create an **org API key** → `NEON_API_KEY`. |
 | Cloudflare | Add the domain as a zone (change nameservers at the registrar if it's registered elsewhere). API token scoped to Zone → DNS:Edit on that zone only → `CLOUDFLARE_API_TOKEN`. |
-| Logto | Reuse the existing app: add redirect URI `https://staging.<domain>/callback` and post sign-out URI `https://staging.<domain>/`; the API resource; the e2e test user. No official Terraform provider. → `LOGTO_*`, `JWT_ISSUER_URI`, `E2E_*`. **Never commit the issuer URL.** |
+| Logto | Reuse the existing app: add redirect URI `https://staging.todos.antro.dev/callback` and post sign-out URI `https://staging.todos.antro.dev/`; the API resource; the e2e test user. No official Terraform provider. → `LOGTO_*`, `JWT_ISSUER_URI`, `E2E_*`. **Never commit the issuer URL.** |
 | GitHub | Environment `staging`, deployment branches limited to `main`, no required reviewers (staging deploys on every merge). Add the secrets above. |
 
 **Done when:** all secrets are in the `staging` environment and the domain's zone is active in Cloudflare.
@@ -120,16 +120,16 @@ GitHub Actions owns which image is deployed. Without this, `terraform apply` rol
 
 ### Stage 4: Custom domain
 
-Chosen: **Cloud Run domain mapping** for the frontend (`staging.<domain>`), because it's free.
+Chosen: **Cloud Run domain mapping** for the frontend (`staging.todos.antro.dev`), because it's free.
 
-- Free. Cloudflare CNAME `staging` → `ghs.googlehosted.com`, **DNS-only (grey cloud)**, or Google's managed certificate won't issue. Cloudflare provider v5 calls the resource `cloudflare_dns_record`.
+- Free. Cloudflare CNAME `staging.todos` → `ghs.googlehosted.com`, **DNS-only (grey cloud)**, or Google's managed certificate won't issue. Cloudflare provider v5 calls the resource `cloudflare_dns_record`.
 - Only some regions support it; `europe-north1` is one of them.
 - Domain verification in Terraform: `google_site_verification_token` data source → Cloudflare TXT record → `google_site_verification_web_resource`, with `terraform@` as an owner.
 - Google labels domain mapping as preview and not recommended for production. Fine for staging; revisit for production.
 
 Alternative if needed later: a global external HTTPS load balancer with a serverless network endpoint group (about $18/month). Works in any region, allows Cloudflare proxying (orange cloud) and Cloud Armor.
 
-**Done when:** `https://staging.<domain>` serves the placeholder with a valid certificate (issuing can take up to an hour).
+**Done when:** `https://staging.todos.antro.dev` serves the placeholder with a valid certificate (issuing can take up to an hour).
 
 ### Stage 5: App deployment
 
@@ -142,11 +142,11 @@ App change (frontend only; see [Backend access](#backend-access)): the ID-token 
 - Migrations run before the new code is live, so the old revision runs against the new schema for a moment. **Migrations must be backward-compatible** (add first, remove in a later release).
 - **Deploy**: `gcloud run services update <service> --image <registry>/<service>:<sha>`, backend first, then frontend. Change only the image; Terraform owns everything else.
 
-**Done when:** signing in on `https://staging.<domain>` works and the signed-in pages load data from the backend.
+**Done when:** signing in on `https://staging.todos.antro.dev` works and the signed-in pages load data from the backend.
 
 ### Stage 6: e2e against staging
 
-The `e2e` job runs after `deploy`: `E2E_BASE_URL=https://staging.<domain> mise run e2e:test`, with the Playwright report uploaded as in `ci.yml`. The tests create their own uniquely named data, so the data that piles up in staging is harmless.
+The `e2e` job runs after `deploy`: `E2E_BASE_URL=https://staging.todos.antro.dev mise run e2e:test`, with the Playwright report uploaded as in `ci.yml`. The tests create their own uniquely named data, so the data that piles up in staging is harmless.
 
 **Done when:** the e2e job passes in the pipeline.
 
@@ -188,7 +188,7 @@ One workflow, on push to `main` and `workflow_dispatch`. Every job runs in the `
 | `build` | `deployer@` | After `infra` succeeded or was skipped: build and push both images |
 | `migrate` | `deployer@` | Flyway against the direct endpoint |
 | `deploy` | `deployer@` | Update the backend image, then the frontend |
-| `e2e` | – | Playwright against `https://staging.<domain>` |
+| `e2e` | – | Playwright against `https://staging.todos.antro.dev` |
 
 - No plan review: `apply` runs unreviewed on merge. Acceptable for staging; production adds plan + approval.
 - If an `infra` run fails, the next push won't retry it unless it touches `infra/**`. Re-run it manually (dispatch always applies).
@@ -202,6 +202,7 @@ One workflow, on push to `main` and `workflow_dispatch`. Every job runs in the `
 - [x] Region: Cloud Run `europe-north1` + Neon `aws-eu-central-1`
 - [x] Logto: reuse the existing app, with the staging redirect URIs added
 - [x] GitHub environments, variables and secrets: managed by hand in GitHub, not in Terraform
+- [x] Domain: `staging.todos.antro.dev` (production later `todos.antro.dev`) in the shared `antro.dev` Cloudflare zone. Google verifies `todos.antro.dev`, which covers both. The Cloudflare token can't be narrower than DNS Edit on the whole zone, so only the `infra` job is given it.
 
 ## Later increments
 

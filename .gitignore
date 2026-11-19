@@ -23,3 +23,12 @@ mise.local.toml
 .mise.local.toml
 .claude/settings.local.json
 CLAUDE.local.md
+
+# Terraform (the .terraform.lock.hcl files are committed)
+.terraform/
+*.tfstate
+*.tfstate.*
+*_override.tf
+override.tf
+crash.log
+*.tfplan

@@ -126,6 +126,20 @@ jobs:
           path: e2e/playwright-report/
           retention-days: 14
 
+  terraform:
+    name: Terraform (fmt + validate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: terraform
+
+      # No plans on PRs: a plan needs the state and the provider credentials
+      - name: Format check + validate
+        run: mise run infra:validate
+
   docker:
     name: Docker image (${{ matrix.app }})
     runs-on: ubuntu-latest

@@ -5,6 +5,7 @@ A todo app: sign in with Logto, then manage your own todos.
 - `apps/backend` – Kotlin + Spring Boot REST API with Postgres
 - `apps/frontend` – TanStack Start (React) UI
 - `e2e` – Playwright end-to-end tests for the whole stack
+- `infra` – Terraform for the GCP deployment (`infra/bootstrap` is the one-time setup per environment)
 
 ## Getting started
 
@@ -66,6 +67,15 @@ Run these before you push.
 | --- | --- |
 | `mise run stack:up` | Build and run the whole app in Docker from the production Dockerfiles. Use it to check that the images build and work together. No hot reload. |
 | `mise run stack:down` | Stop that stack. |
+
+### Infrastructure
+
+The deployment is written in Terraform under `infra/` (see `docs/deployment/plan.md`). CI runs `infra:validate` on every pull request.
+
+| Command | When to use it |
+| --- | --- |
+| `mise run infra:fmt` | Format the Terraform code. |
+| `mise run infra:validate` | Format-check and validate the Terraform code. Needs no credentials or state. |
 
 ### Setup
 
