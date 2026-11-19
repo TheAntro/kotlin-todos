@@ -50,6 +50,7 @@ jobs:
         working-directory: infra
     env:
       NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       TF_VAR_jwt_issuer_uri: ${{ secrets.JWT_ISSUER_URI }}
       TF_VAR_logto_endpoint: ${{ secrets.LOGTO_ENDPOINT }}
       TF_VAR_logto_app_id: ${{ secrets.LOGTO_APP_ID }}
