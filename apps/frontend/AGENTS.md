@@ -26,7 +26,8 @@ TanStack Start (React 19) UI for todos, built with Vite and Tailwind CSS v4. Pac
 - File-based routing in `src/routes`; `src/routeTree.gen.ts` is generated – don't edit it.
 - Data fetching with TanStack Query (`src/integrations/tanstack-query`); use query/mutation hooks and invalidate todo queries after mutations.
 - Auth is server-side (BFF): `@logto/node` + iron-session cookie in `src/server/logto.server.ts`; sign-in/out are server routes (`/api/auth/sign-in`, `/api/auth/sign-out`, `/callback`). Tokens never go to the browser.
-- Call the backend only from server functions that use `authMiddleware` (`src/server/auth.functions.ts`), passing `context.accessToken` to `backendFetch` (`src/server/backend.server.ts`). See `src/server/hello.functions.ts`.
+- Call the backend only from server functions that use `authMiddleware` (`src/server/auth.functions.ts`), using the generated SDK functions from `#/api/generated` with `backendOptions(context.accessToken)` (`src/server/backend.server.ts`). See `src/server/hello.functions.ts`. Don't hand-write backend types or `fetch` calls.
+- `src/api/generated` is generated from `apps/backend/openapi.json` by `pnpm generate:api` (config: `openapi-ts.config.ts`); don't edit it. The SDK validates request and response bodies with the generated Zod schemas; failures throw `BackendError` (error status) or `BackendContractError`.
 - Prefetch authenticated data in the route `loader` (`context.queryClient.ensureQueryData(...)`), then read it with `useSuspenseQuery`. A server function that first runs during streaming SSR may refresh the access token after the headers are sent, and the rotated session cookie is then silently lost.
 - Backend API: Spring Boot on `API_BASE_URL` (default `http://localhost:8080`), endpoints under `/api/todos`.
 

@@ -54,6 +54,16 @@ jobs:
       - name: Lint + format check
         run: mise run frontend:check
 
+      # The client is generated from apps/backend/openapi.json (which the backend tests keep in sync with the code)
+      - name: Generated API client is up to date
+        run: |
+          pnpm generate:api
+          if [ -n "$(git status --porcelain -- src/api/generated)" ]; then
+            echo "::error::src/api/generated is out of date; run 'mise run api:generate' and commit the result"
+            exit 1
+          fi
+        working-directory: apps/frontend
+
       - name: Typecheck
         run: mise run frontend:typecheck
 

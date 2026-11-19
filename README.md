@@ -45,6 +45,12 @@ Run these before you push.
 | `mise run frontend:typecheck` | Type-check the frontend with TypeScript. |
 | `mise run frontend:test` | Run the frontend unit tests (Vitest). |
 
+### API contract
+
+| Command | When to use it |
+| --- | --- |
+| `mise run api:generate` | After changing the backend API. Updates `apps/backend/openapi.json` and regenerates the frontend's API client from it. Docker must be running. Commit both. |
+
 ### Database
 
 | Command | When to use it |
@@ -73,6 +79,15 @@ Run these before you push.
 ### Git hooks
 
 `mise run setup` installs a pre-commit hook ([lefthook](https://lefthook.dev), configured in `lefthook.yml`). When you commit, it formats the staged files and adds the fixes to the commit: Biome for the frontend and e2e tests, ktlint (Spotless) for the backend. Slower checks (detekt, typecheck, tests, Docker builds) run in CI on every pull request. To skip the hook once, use `git commit --no-verify`.
+
+## API contract
+
+The backend's OpenAPI spec is committed as `apps/backend/openapi.json`. It's the contract between the backend and the frontend:
+
+- The backend test `OpenApiSpecTest` fails if the committed spec no longer matches the code.
+- The frontend generates its API client from it with [Hey API](https://heyapi.dev) into `apps/frontend/src/api/generated` (committed, don't edit by hand): TypeScript types, Zod schemas, and SDK functions that validate request and response bodies with those schemas. CI fails if the generated code is out of date.
+
+So after changing an endpoint or DTO, run `mise run api:generate` and commit the result. Then TypeScript shows what the frontend needs to change.
 
 ## Sign-in
 

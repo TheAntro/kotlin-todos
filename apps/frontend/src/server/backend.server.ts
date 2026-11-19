@@ -1,40 +1,58 @@
+import * as z from "zod";
+import { createClient, createConfig } from "#/api/generated/client";
 import { serverEnv } from "./env.server";
 
+/** The backend answered with an error status (problem details are in `body`). */
 export class BackendError extends Error {
 	constructor(
 		readonly status: number,
 		message: string,
+		readonly body?: unknown,
 	) {
 		super(message);
 		this.name = "BackendError";
 	}
 }
 
-/** Calls the Kotlin API as the signed-in user. Get `accessToken` from `authMiddleware`. */
-export async function backendFetch<T>(
-	accessToken: string,
-	path: string,
-	init: RequestInit = {},
-): Promise<T> {
-	const headers = new Headers(init.headers);
-	headers.set("Authorization", `Bearer ${accessToken}`);
-	headers.set("Accept", "application/json");
-	if (init.body && !headers.has("Content-Type")) {
-		headers.set("Content-Type", "application/json");
+/** A request or response didn't match the backend's OpenAPI contract (`apps/backend/openapi.json`). */
+export class BackendContractError extends Error {
+	constructor(message: string, cause: z.ZodError) {
+		super(`${message}: ${z.prettifyError(cause)}`, { cause });
+		this.name = "BackendContractError";
 	}
+}
 
-	const response = await fetch(`${serverEnv().apiBaseUrl}${path}`, {
-		...init,
-		headers,
+/**
+ * Options for calling the Kotlin API as the signed-in user with a generated SDK function
+ * from `#/api/generated`. Get `accessToken` from `authMiddleware`:
+ *
+ *     const { data } = await hello(backendOptions(context.accessToken));
+ *
+ * Request and response bodies are validated against the OpenAPI schemas. Failures throw
+ * `BackendError` (error status) or `BackendContractError` (body doesn't match the contract).
+ */
+export function backendOptions(accessToken: string) {
+	const client = createClient(
+		createConfig({ baseUrl: serverEnv().apiBaseUrl, auth: accessToken }),
+	);
+	client.interceptors.error.use((error, response, _request, options) => {
+		// The route template (e.g. `/api/todos/{id}`), so messages don't leak the backend host or IDs
+		const operation = `${options.method} ${options.url}`;
+		if (error instanceof z.ZodError) {
+			const part = response ? "response" : "request";
+			return new BackendContractError(
+				`${operation}: ${part} doesn't match the API contract`,
+				error,
+			);
+		}
+		if (response && !response.ok) {
+			return new BackendError(
+				response.status,
+				`${operation} failed with ${response.status}`,
+				error,
+			);
+		}
+		return error;
 	});
-	if (!response.ok) {
-		throw new BackendError(
-			response.status,
-			`${init.method ?? "GET"} ${path} failed with ${response.status}`,
-		);
-	}
-	if (response.status === 204) {
-		return undefined as T;
-	}
-	return (await response.json()) as T;
+	return { client, throwOnError: true as const };
 }

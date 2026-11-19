@@ -37,6 +37,15 @@ description = "Install e2e test dependencies and the Playwright browser"
 dir = "{{config_root}}/e2e"
 run = ["pnpm install", "pnpm exec playwright install chromium"]
 
+# ---------- API contract ----------
+
+[tasks."api:generate"]
+description = "Update the backend's openapi.json and regenerate the frontend API client from it"
+run = [
+  "cd apps/backend && UPDATE_OPENAPI_SPEC=true ./gradlew --quiet test --tests dev.antro.todos.OpenApiSpecTest --rerun",
+  "cd apps/frontend && pnpm generate:api",
+]
+
 # ---------- Database ----------
 
 [tasks."db:up"]
