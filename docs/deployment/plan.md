@@ -1,6 +1,6 @@
 # Deployment plan: Cloud Run + Neon + Cloudflare
 
-Status: **in progress**: Stages 1–4 done (`https://staging.todos.antro.dev` serves the placeholder with a valid certificate since 2026-11-19). Stage 5 (app deployment) is implemented on branch `app-deployment` and not yet merged; see [Stage 5 implementation notes](#stage-5-implementation-notes). Target: deploy the frontend and backend to Google Cloud Run, the database to Neon and DNS to Cloudflare. All infra is in Terraform, and infra changes, migrations and deployments run in one GitHub Actions workflow. GitHub Actions reaches GCP through Workload Identity Federation (WIF), so there are no service account keys.
+Status: **in progress**: Stages 1–5 done: since 2026-11-19 every push to `main` builds, migrates and deploys to `https://staging.todos.antro.dev`, and sign-in and backend calls work there. See [Stage 5 implementation notes](#stage-5-implementation-notes). Stage 6 (e2e against staging) is implemented on branch `staging-e2e-test` and not yet merged; see [Stage 6 implementation notes](#stage-6-implementation-notes). Target: deploy the frontend and backend to Google Cloud Run, the database to Neon and DNS to Cloudflare. All infra is in Terraform, and infra changes, migrations and deployments run in one GitHub Actions workflow. GitHub Actions reaches GCP through Workload Identity Federation (WIF), so there are no service account keys.
 
 Scope: this increment builds a **staging** environment that deploys on every push to `main` and runs the e2e tests against it. Production and PR previews are later increments (see [Later increments](#later-increments)). The Terraform is written per environment so production can reuse it.
 
@@ -195,17 +195,25 @@ App change: the frontend's ID-token helper and `BACKEND_AUDIENCE` (see [Backend 
 - `deploy.yml`: `build` (matrix, plain `docker build`/`push`), `migrate` and `deploy`, all as `deployer@`, with values derived rather than read from `terraform output`. `build` runs when `infra` succeeded or was skipped.
 - Migration run checked locally against the compose Postgres: it migrates, logs `Started`, and exits 0; a startup failure exits 1. It still needs `JWT_ISSUER_URI` to *resolve* (the resource server's `IssuerUriCondition` reads it), so the workflow passes a placeholder. `DB_USERNAME` is hard-coded to `todos` (the `role_name` in `infra/main.tf`), since `migrate-db-url` holds only the URL. There are no migrations in `db/migration` yet, so the first run is a no-op.
 
-**To do:**
+**Done on 2026-11-19:** the first run on `main` went green (build, migrate, deploy as `deployer@`), and after the fix below, signing in on staging works and the profile page shows the backend's hello.
 
-1. Merge to `main` and watch the first run. Untested until then: `docker push` and `gcloud secrets versions access` as `deployer@` via WIF, and `gcloud run services update` permissions.
-2. Open check from Stage 4: after the first deploy, run a local `terraform plan` (see Stage 4 notes) and confirm it shows no changes to the services, i.e. `gcloud` didn't set anything outside `ignore_changes`.
-3. Check the done criterion by hand: sign in on staging and load the signed-in pages.
+**Sign-in fix:** the first deploy failed every sign-in with `LogtoError: The callback URI mismatches the redirect URI`. Cloud Run ends TLS in front of the container, and the Nitro node server builds `request.url` as `http://…` and ignores `X-Forwarded-Proto` (checked against a local production build). `@logto/js` compares the callback with `callbackUri.startsWith(redirectUri)`, so `/callback` now rebuilds the URL from `APP_BASE_URL` (`publicCallbackUrl` in `src/server/auth-utils.ts`). Watch for this anywhere else the frontend builds a public URL from the request. The error comes from the SDK inside the frontend, so it's in the frontend's Cloud Run logs, not Logto's.
+
+**Ownership split checked** (the open check from Stage 4): after the deploy, a local `terraform plan` targeted at the two services (`-target=module.backend.google_cloud_run_v2_service.this -target=module.frontend.google_cloud_run_v2_service.this`) shows no changes, so `gcloud run services update` sets nothing outside `ignore_changes`. Targeting also skips the site-verification read that needs the extra ADC scope.
 
 ### Stage 6: e2e against staging
 
 The `e2e` job runs after `deploy`: `E2E_BASE_URL=https://staging.todos.antro.dev mise run e2e:test`, with the Playwright report uploaded as in `ci.yml`. The tests create their own uniquely named data, so the data that piles up in staging is harmless.
 
 **Done when:** the e2e job passes in the pipeline.
+
+#### Stage 6 implementation notes
+
+- `deploy.yml` has an `e2e` job after `deploy`, in the `staging` environment for `E2E_USERNAME`/`E2E_PASSWORD`. It checks the site answers, runs `mise run e2e:test` with `E2E_BASE_URL=https://staging.todos.antro.dev` (in CI, Playwright retries twice), and uploads the report as `playwright-report-staging`. The tests needed no changes: everything comes from `E2E_BASE_URL` and the credentials.
+- Checked from a laptop on 2026-11-19 before merging: all 8 tests pass against staging.
+- A failing e2e doesn't roll back: the new revisions are already serving. For staging that's fine; production will promote only an image SHA that passed staging e2e (see [Later increments](#later-increments)).
+
+**To do:** merge and confirm the job passes in the pipeline, then mark Stage 6 and this increment done.
 
 ## Backend access
 
