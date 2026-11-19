@@ -1,0 +1,43 @@
+# Deploys to staging. See docs/deployment/plan.md.
+# Every job runs in the `staging` GitHub environment, whose variables and secrets it uses and which
+# only `main` can deploy to. GitHub Actions signs in to GCP with Workload Identity Federation, so
+# there are no service account keys.
+#
+# Stage 2 (bootstrap): only checks that each CI service account can be impersonated.
+
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+# Never run two deploys at once, and never cut off a running one
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # for the GitHub OIDC token that WIF exchanges
+
+jobs:
+  auth-check:
+    name: Auth check (${{ matrix.sa }})
+    runs-on: ubuntu-latest
+    environment: staging
+    strategy:
+      fail-fast: false
+      matrix:
+        sa: [TERRAFORM_SA, DEPLOYER_SA]
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars[matrix.sa] }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Call GCP as the service account
+        run: |
+          gcloud auth list
+          gcloud run services list --region europe-north1

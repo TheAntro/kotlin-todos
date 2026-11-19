@@ -10,6 +10,7 @@ java = "temurin-25.0.5+8.0.LTS" # keep in sync with apps/backend/Dockerfile
 node = "26.12.1"                # keep in sync with apps/frontend/Dockerfile
 pnpm = "12.16.1"
 lefthook = "2.2.2"
+terraform = "1.17.2"
 
 # Local settings and secrets from the gitignored .env (see .env.example); it's fine if the file is missing
 [env]
@@ -139,6 +140,24 @@ run = "pnpm test"
 description = "Type-check the frontend with tsc"
 dir = "{{config_root}}/apps/frontend"
 run = "pnpm typecheck"
+
+# ---------- Infrastructure (Terraform) ----------
+
+[tasks."infra:fmt"]
+description = "Format the Terraform code"
+run = "terraform fmt -recursive infra"
+
+[tasks."infra:validate"]
+description = "Format check and validate the Terraform code (no state or credentials needed)"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+terraform fmt -check -recursive infra
+for dir in infra/bootstrap; do
+  terraform -chdir="$dir" init -backend=false -input=false > /dev/null
+  terraform -chdir="$dir" validate
+done
+'''
 
 # ---------- End-to-end tests (Playwright) ----------
 # Run against an already running app (`mise run dev` or `mise run stack:up`).
