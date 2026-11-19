@@ -7,7 +7,7 @@ Todos app monorepo: users sign in with Logto, then create, list, update and dele
 - `apps/backend` – Kotlin + Spring Boot REST API (Postgres, JWT resource server). See `apps/backend/AGENTS.md`.
 - `apps/frontend` – TanStack Start (React) UI. See `apps/frontend/AGENTS.md`.
 - `e2e/` – Playwright end-to-end tests, the main test suite. They run against the running app and sign in with a real Logto test user (`E2E_USERNAME`/`E2E_PASSWORD`). See `e2e/AGENTS.md`.
-- `infra/` – Terraform for the deployment (Cloud Run, Neon, Cloudflare); see `docs/deployment/plan.md`. `infra/bootstrap/` is run once per environment from a laptop (state bucket, Workload Identity Federation, CI service accounts); see its README.
+- `infra/` – Terraform for the deployment (Cloud Run, Neon, Cloudflare); see `docs/deployment/plan.md`. The root module wires reusable modules in `infra/modules/` (one Cloud Run service, the Neon database); per-environment settings are in `infra/envs/<env>.tfvars`, and CI applies it on push to `main` (`.github/workflows/deploy.yml`). `infra/bootstrap/` is run once per environment from a laptop (state bucket, Workload Identity Federation, CI service accounts); see its README.
 - `bruno/` – Bruno collection for calling the API by hand; a collection pre-request script fetches an M2M access token using credentials from `bruno/.env` (gitignored, see `bruno/.env.example`).
 - `compose.yaml` – local Postgres; `--profile app` runs the full stack from the production Dockerfiles.
 - `mise.toml` – pinned toolchain (Java, Node, pnpm) and all dev tasks.

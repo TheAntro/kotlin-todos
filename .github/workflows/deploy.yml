@@ -1,13 +1,13 @@
-# Deploys to staging. See docs/deployment/plan.md.
+# Deploys to staging on every push to main. See docs/deployment/plan.md.
 # Every job runs in the `staging` GitHub environment, whose variables and secrets it uses and which
 # only `main` can deploy to. GitHub Actions signs in to GCP with Workload Identity Federation, so
 # there are no service account keys.
-#
-# Stage 2 (bootstrap): only checks that each CI service account can be impersonated.
 
 name: Deploy
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 # Never run two deploys at once, and never cut off a running one
@@ -17,27 +17,59 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write # for the GitHub OIDC token that WIF exchanges
 
 jobs:
-  auth-check:
-    name: Auth check (${{ matrix.sa }})
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            infra:
+              - 'infra/**'
+
+  # Runs only when infra/ changed, or on manual dispatch (to retry a failed apply).
+  # No plan review: acceptable for staging; production will review the plan first.
+  infra:
+    name: Terraform apply
+    needs: changes
+    if: needs.changes.outputs.infra == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: staging
-    strategy:
-      fail-fast: false
-      matrix:
-        sa: [TERRAFORM_SA, DEPLOYER_SA]
+    permissions:
+      contents: read
+      id-token: write # for the GitHub OIDC token that WIF exchanges
+    defaults:
+      run:
+        working-directory: infra
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      TF_VAR_jwt_issuer_uri: ${{ secrets.JWT_ISSUER_URI }}
+      TF_VAR_logto_endpoint: ${{ secrets.LOGTO_ENDPOINT }}
+      TF_VAR_logto_app_id: ${{ secrets.LOGTO_APP_ID }}
+      TF_VAR_logto_app_secret: ${{ secrets.LOGTO_APP_SECRET }}
+      TF_IN_AUTOMATION: "true"
     steps:
+      - uses: actions/checkout@v7
+
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: terraform
+
       - uses: google-github-actions/auth@v3
         with:
           project_id: ${{ vars.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
-          service_account: ${{ vars[matrix.sa] }}
+          service_account: ${{ vars.TERRAFORM_SA }}
 
-      - uses: google-github-actions/setup-gcloud@v3
+      - name: Terraform init
+        run: terraform init -input=false -backend-config="bucket=${{ vars.GCP_PROJECT_ID }}-tfstate"
 
-      - name: Call GCP as the service account
-        run: |
-          gcloud auth list
-          gcloud run services list --region europe-north1
+      - name: Terraform apply
+        run: terraform apply -input=false -auto-approve -var-file=envs/staging.tfvars
