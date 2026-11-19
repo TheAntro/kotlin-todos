@@ -18,6 +18,10 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  REGION: europe-north1 # region in infra/envs/staging.tfvars
+  REGISTRY_HOST: europe-north1-docker.pkg.dev
+
 jobs:
   changes:
     name: Detect changes
@@ -74,3 +78,103 @@ jobs:
 
       - name: Terraform apply
         run: terraform apply -input=false -auto-approve -var-file=envs/staging.tfvars
+
+  # The jobs below run as deployer@, which can't read Terraform state, so they derive what they
+  # need: registry europe-north1-docker.pkg.dev/<project>/images, services `backend`/`frontend`.
+  # Building runs third-party build code (Gradle plugins, npm packages), so never as terraform@.
+  build:
+    name: Build ${{ matrix.service }}
+    needs: infra
+    # Also after a skipped infra job (no infra/ changes), but not after a failed one
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      matrix:
+        service: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOYER_SA }}
+
+      - name: Build and push
+        env:
+          IMAGE: ${{ env.REGISTRY_HOST }}/${{ vars.GCP_PROJECT_ID }}/images/${{ matrix.service }}:${{ github.sha }}
+        run: |
+          gcloud auth configure-docker "$REGISTRY_HOST" --quiet
+          docker build -t "$IMAGE" "apps/${{ matrix.service }}"
+          docker push "$IMAGE"
+
+  # Runs the just-built backend image without its web server and with Flyway on, against Neon's
+  # direct (non-pooler) endpoint; the app exits once migrated (non-zero if it fails). JWT_ISSUER_URI
+# only has to resolve: nothing validates tokens without the web server. The old revision keeps serving
+  # against the new schema until deploy, so migrations must be backward-compatible.
+  migrate:
+    name: Migrate database
+    needs: build
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOYER_SA }}
+
+      - name: Run Flyway
+        env:
+          IMAGE: ${{ env.REGISTRY_HOST }}/${{ vars.GCP_PROJECT_ID }}/images/backend:${{ github.sha }}
+          DB_USERNAME: todos # role_name in infra/main.tf
+        run: |
+          DB_URL="$(gcloud secrets versions access latest --secret=migrate-db-url)"
+          DB_PASSWORD="$(gcloud secrets versions access latest --secret=backend-db-password)"
+          echo "::add-mask::$DB_URL"
+          echo "::add-mask::$DB_PASSWORD"
+          export DB_URL DB_PASSWORD
+          gcloud auth configure-docker "$REGISTRY_HOST" --quiet
+          docker run --rm \
+            -e DB_URL -e DB_USERNAME -e DB_PASSWORD \
+            -e SPRING_MAIN_WEB_APPLICATION_TYPE=none \
+            -e SPRING_FLYWAY_ENABLED=true \
+            -e JWT_ISSUER_URI=https://unused.invalid \
+            "$IMAGE"
+
+  # Changes only the image; Terraform owns everything else about the services.
+  # Each update waits until the new revision passes its startup probe.
+  deploy:
+    name: Deploy
+    needs: migrate
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.todos.antro.dev
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOYER_SA }}
+
+      - name: Deploy backend, then frontend
+        run: |
+          for service in backend frontend; do
+            gcloud run services update "$service" \
+              --region "$REGION" \
+              --image "$REGISTRY_HOST/${{ vars.GCP_PROJECT_ID }}/images/$service:${{ github.sha }}" \
+              --quiet
+          done

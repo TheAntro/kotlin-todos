@@ -154,6 +154,7 @@ Settings come from environment variables, with defaults that work for local deve
 | `SESSION_SECRET` | **Required for sign-in.** At least 32 characters; encrypts the frontend's session cookie. Changing it signs everyone out. |
 | `APP_BASE_URL` | Public URL of the frontend (default `http://localhost:3000`). Logto redirects back to `<APP_BASE_URL>/callback`. Use `https://` in production so the cookie is `Secure`. |
 | `API_BASE_URL` | Where the frontend server reaches the backend (default `http://localhost:8080`). |
+| `BACKEND_AUDIENCE` | Only on Cloud Run (set by Terraform): the frontend then sends a Google ID token for this audience in `X-Serverless-Authorization`, because only its service account may call the backend. Leave unset locally. |
 | `E2E_USERNAME`, `E2E_PASSWORD` | Logto test user for the e2e tests. |
 | `E2E_BASE_URL` | App URL the e2e tests open (default `http://localhost:3000`). |
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | Database connection. Defaults to the local Postgres from `compose.yaml`. |

@@ -1,5 +1,6 @@
 package dev.antro.todos.security
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
@@ -10,7 +11,9 @@ import org.springframework.security.oauth2.jwt.JwtClaimValidator
 import org.springframework.security.oauth2.jwt.JwtTypeValidator
 import org.springframework.security.web.SecurityFilterChain
 
+// Not in non-web mode (the deploy workflow's migration run), where there's no HttpSecurity
 @Configuration
+@ConditionalOnWebApplication
 class SecurityConfig {
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
