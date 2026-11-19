@@ -153,7 +153,7 @@ run = '''
 #!/usr/bin/env bash
 set -euo pipefail
 terraform fmt -check -recursive infra
-for dir in infra/bootstrap; do
+for dir in infra/bootstrap infra; do
   terraform -chdir="$dir" init -backend=false -input=false > /dev/null
   terraform -chdir="$dir" validate
 done

@@ -1,6 +1,6 @@
 # Deployment plan: Cloud Run + Neon + Cloudflare
 
-Status: **in progress**: Stage 1 done; Stage 2 code written (`infra/bootstrap/`, minimal `deploy.yml`), not yet applied. Target: deploy the frontend and backend to Google Cloud Run, the database to Neon and DNS to Cloudflare. All infra is in Terraform, and infra changes, migrations and deployments run in one GitHub Actions workflow. GitHub Actions reaches GCP through Workload Identity Federation (WIF), so there are no service account keys.
+Status: **in progress**: Stages 1–2 done (bootstrap applied, WIF check green); Stage 3 code written, not yet applied. Target: deploy the frontend and backend to Google Cloud Run, the database to Neon and DNS to Cloudflare. All infra is in Terraform, and infra changes, migrations and deployments run in one GitHub Actions workflow. GitHub Actions reaches GCP through Workload Identity Federation (WIF), so there are no service account keys.
 
 Scope: this increment builds a **staging** environment that deploys on every push to `main` and runs the e2e tests against it. Production and PR previews are later increments (see [Later increments](#later-increments)). The Terraform is written per environment so production can reuse it.
 
@@ -70,7 +70,7 @@ Each stage ends with a check that must pass before the next starts. `deploy.yml`
 | Service | Manual step |
 |---|---|
 | GCP | Google account, **billing account**, project `kotlin-todos-staging` linked to it. `gcloud auth application-default login` for the bootstrap. |
-| Neon | Sign up and create an **org API key** → `NEON_API_KEY`. |
+| Neon | Sign up and create an API key → `NEON_API_KEY`. The console only offers **personal** keys here, which can reach every project of the account, so the project's `org_id` goes in the tfvars. |
 | Cloudflare | Add the domain as a zone (change nameservers at the registrar if it's registered elsewhere). API token scoped to Zone → DNS:Edit on that zone only → `CLOUDFLARE_API_TOKEN`. |
 | Logto | Reuse the existing app: add redirect URI `https://staging.todos.antro.dev/callback` and post sign-out URI `https://staging.todos.antro.dev/`; the API resource; the e2e test user. No official Terraform provider. → `LOGTO_*`, `JWT_ISSUER_URI`, `E2E_*`. **Never commit the issuer URL.** |
 | GitHub | Environment `staging`, deployment branches limited to `main`, no required reviewers (staging deploys on every merge). Add the secrets above. |
@@ -86,18 +86,25 @@ Run once from a laptop with local state, then `terraform init -migrate-state` in
 - **WIF pool and GitHub OIDC provider**: `attribute_condition` pinned to the repository's numeric ID (`assertion.repository_id == "<id>"`, so a deleted and recreated repo with the same name can't get access), and `attribute.environment = assertion.environment` mapped.
 - CI service accounts, both impersonable only by `principalSet://…/attribute.environment/staging`, i.e. only from jobs in the `staging` environment, which only `main` can use:
   - `terraform@`: broad rights on the project (it creates service accounts, IAM bindings, secrets and services).
-  - `deployer@`: `roles/run.developer`, `roles/artifactregistry.writer`, `roles/iam.serviceAccountUser` on the runtime service accounts only, and `secretAccessor` on the migration secrets (`db-direct-url`, `db-password`).
+  - `deployer@`: `roles/run.developer`, `roles/artifactregistry.writer`, `roles/iam.serviceAccountUser` on the runtime service accounts only, and `secretAccessor` on the migration secrets (`migrate-db-url`, `backend-db-password`).
 - **Billing budget alert**: here rather than in the main stack, because it needs rights on the billing account, which the bootstrap user has and `terraform@` doesn't. With user credentials the provider needs `billing_project` and `user_project_override = true`.
 
 **Done when:** a minimal `deploy.yml` (`workflow_dispatch`, `environment: staging`, `google-github-actions/auth` as each service account) succeeds.
 
 ### Stage 3: Main stack (`infra/`)
 
+Layout: the root module wires things together and owns the Artifact Registry repo and the `deployer@` bindings (`deployer.tf`). Two local modules keep the boundaries:
+
+- `modules/neon-database`: the Neon project; outputs the pooled and direct JDBC URLs and the credentials.
+- `modules/cloud-run-service`: one service with its runtime service account, its own secrets (`<service>-<env-var>`, readable only by that account) and its invokers. Used for both apps.
+
+Stage 4 adds `modules/custom-domain`.
+
 GCS backend with prefix `staging`, variables from `infra/envs/staging.tfvars`. Added to `deploy.yml` as the `infra` job (see [Workflow](#workflow-deployyml)).
 
 - **Artifact Registry** Docker repo with a cleanup policy (keep the last N images).
 - **Runtime service accounts** for `frontend` and `backend`.
-- **Neon** (`kislerdm/neon` provider): project in the chosen region. Use the default branch, database and role the project comes with (`default_branch_id` etc.); don't create a second `main` branch. Neon returns `postgresql://` URIs, so Terraform builds the JDBC URLs: pooled host for the app, direct host for migrations (`db-direct-url` secret).
+- **Neon** (`kislerdm/neon` provider): project in the chosen region. Use the default branch, database and role the project comes with (`default_branch_id` etc.); don't create a second `main` branch. Neon returns `postgresql://` URIs, so Terraform builds the JDBC URLs: pooled host for the app, direct host for migrations (`migrate-db-url` secret).
 - **Secret Manager**: secrets and versions as in [Configuration and secrets](#configuration-and-secrets).
 - **Cloud Run** `backend` and `frontend`:
   - Placeholder image `us-docker.pkg.dev/cloudrun/container/hello` and the ownership split below.
@@ -138,7 +145,7 @@ App change (frontend only; see [Backend access](#backend-access)): the ID-token 
 `deploy.yml` gets the `build`, `migrate` and `deploy` jobs:
 
 - **Build**: both images, pushed to Artifact Registry tagged with the git SHA.
-- **Migrate**: run the just-built backend image in the runner with `SPRING_MAIN_WEB_APPLICATION_TYPE=none`, Flyway on, and `DB_URL`/`DB_PASSWORD` from `db-direct-url`/`db-password` (Neon's **direct**, non-pooler endpoint). This uses exactly the Flyway version and migrations the app ships with, Hibernate's `ddl-auto=validate` checks the entities against the migrated schema, and the app exits once started. Check while implementing that it exits cleanly and doesn't need `JWT_ISSUER_URI` in non-web mode. Fallback: the Flyway CLI image with `apps/backend/src/main/resources/db/migration`, version kept in sync with Spring Boot's.
+- **Migrate**: run the just-built backend image in the runner with `SPRING_MAIN_WEB_APPLICATION_TYPE=none`, Flyway on, and `DB_URL`/`DB_PASSWORD` from `migrate-db-url`/`backend-db-password` (Neon's **direct**, non-pooler endpoint). This uses exactly the Flyway version and migrations the app ships with, Hibernate's `ddl-auto=validate` checks the entities against the migrated schema, and the app exits once started. Check while implementing that it exits cleanly and doesn't need `JWT_ISSUER_URI` in non-web mode. Fallback: the Flyway CLI image with `apps/backend/src/main/resources/db/migration`, version kept in sync with Spring Boot's.
 - Migrations run before the new code is live, so the old revision runs against the new schema for a moment. **Migrations must be backward-compatible** (add first, remove in a later release).
 - **Deploy**: `gcloud run services update <service> --image <registry>/<service>:<sha>`, backend first, then frontend. Change only the image; Terraform owns everything else.
 
