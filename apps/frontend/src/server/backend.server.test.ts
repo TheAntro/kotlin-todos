@@ -34,6 +34,7 @@ describe("backendOptions", () => {
 		const request = fetch.mock.calls[0]?.[0] as Request;
 		expect(request.url).toBe("http://backend.test/api/v1/hello");
 		expect(request.headers.get("Authorization")).toBe("Bearer token-1");
+		expect(request.headers.has("X-Serverless-Authorization")).toBe(false);
 	});
 
 	it("rejects a response that doesn't match the contract", async () => {

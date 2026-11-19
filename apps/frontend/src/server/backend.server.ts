@@ -1,6 +1,7 @@
 import * as z from "zod";
 import { createClient, createConfig } from "#/api/generated/client";
 import { serverEnv } from "./env.server";
+import { backendIdToken } from "./id-token.server";
 
 /** The backend answered with an error status (problem details are in `body`). */
 export class BackendError extends Error {
@@ -30,11 +31,24 @@ export class BackendContractError extends Error {
  *
  * Request and response bodies are validated against the OpenAPI schemas. Failures throw
  * `BackendError` (error status) or `BackendContractError` (body doesn't match the contract).
+ *
+ * On Cloud Run (`BACKEND_AUDIENCE` set) it also sends the frontend's Google ID token in
+ * `X-Serverless-Authorization`, since only the frontend's service account may invoke the backend.
  */
 export function backendOptions(accessToken: string) {
+	const { apiBaseUrl, backendAudience } = serverEnv();
 	const client = createClient(
-		createConfig({ baseUrl: serverEnv().apiBaseUrl, auth: accessToken }),
+		createConfig({ baseUrl: apiBaseUrl, auth: accessToken }),
 	);
+	if (backendAudience) {
+		client.interceptors.request.use(async (request) => {
+			request.headers.set(
+				"X-Serverless-Authorization",
+				`Bearer ${await backendIdToken(backendAudience)}`,
+			);
+			return request;
+		});
+	}
 	client.interceptors.error.use((error, response, _request, options) => {
 		// The route template (e.g. `/api/todos/{id}`), so messages don't leak the backend host or IDs
 		const operation = `${options.method} ${options.url}`;

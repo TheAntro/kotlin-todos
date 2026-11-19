@@ -19,5 +19,7 @@ export function serverEnv() {
 		// The API resource the backend accepts tokens for (same value as the backend's JWT_AUDIENCE)
 		apiResource: process.env.JWT_AUDIENCE ?? "https://api.todos.local",
 		sessionSecret: required("SESSION_SECRET"),
+		// Audience of the Google ID token sent to the backend on Cloud Run; unset locally, so no token is sent
+		backendAudience: process.env.BACKEND_AUDIENCE || undefined,
 	};
 }

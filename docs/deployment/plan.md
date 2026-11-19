@@ -1,6 +1,6 @@
 # Deployment plan: Cloud Run + Neon + Cloudflare
 
-Status: **in progress**: Stages 1–3 done (main stack applied by CI; frontend `run.app` serves the placeholder, backend returns 403 without an ID token). Stage 4 code written on branch `custom-domain`, not yet applied; see [Stage 4 implementation notes](#stage-4-implementation-notes). Target: deploy the frontend and backend to Google Cloud Run, the database to Neon and DNS to Cloudflare. All infra is in Terraform, and infra changes, migrations and deployments run in one GitHub Actions workflow. GitHub Actions reaches GCP through Workload Identity Federation (WIF), so there are no service account keys.
+Status: **in progress**: Stages 1–4 done (`https://staging.todos.antro.dev` serves the placeholder with a valid certificate since 2026-11-19). Stage 5 (app deployment) is implemented on branch `app-deployment` and not yet merged; see [Stage 5 implementation notes](#stage-5-implementation-notes). Target: deploy the frontend and backend to Google Cloud Run, the database to Neon and DNS to Cloudflare. All infra is in Terraform, and infra changes, migrations and deployments run in one GitHub Actions workflow. GitHub Actions reaches GCP through Workload Identity Federation (WIF), so there are no service account keys.
 
 Scope: this increment builds a **staging** environment that deploys on every push to `main` and runs the e2e tests against it. Production and PR previews are later increments (see [Later increments](#later-increments)). The Terraform is written per environment so production can reuse it.
 
@@ -153,8 +153,12 @@ Expect only additions (2 DNS records, the web resource, the domain mapping). CI 
 
 **To do:**
 
-1. Add `CLOUDFLARE_API_TOKEN` to the GitHub `staging` environment secrets if it isn't there yet, then merge to `main`. If the first apply fails verification (TXT not yet propagated), re-run the workflow with dispatch.
-2. **Verify:** `curl -sI https://staging.todos.antro.dev` → 200 with a Google-issued certificate (can take up to an hour; `gcloud beta run domain-mappings describe --domain staging.todos.antro.dev --region europe-north1` shows progress). Then mark Stage 4 done here.
+1. ~~Add `CLOUDFLARE_API_TOKEN` to the `staging` environment and merge~~: done; the CI apply went green on 2026-11-19. Checked right after: the TXT on `todos.antro.dev` and the CNAME `staging.todos.antro.dev` → `ghs.googlehosted.com` resolve, and the mapping reports `DomainRoutable: True` and `CertificatePending`. While pending, the mapping says "You must configure your DNS records"; that's its standard text, not an error.
+2. **Verify:** `curl -sI https://staging.todos.antro.dev` → 200 with a Google-issued certificate (until then the TLS handshake fails). To see progress without the gcloud beta component:
+   ```sh
+   curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" https://europe-north1-run.googleapis.com/apis/domains.cloudrun.com/v1/namespaces/kotlin-todos-staging/domainmappings/staging.todos.antro.dev | jq .status.conditions
+   ```
+   If the certificate is still pending after a few hours, check that the CNAME is still grey-cloud (DNS-only) in Cloudflare. Once it's served, mark Stage 4 done here and move on to Stage 5.
 
 **Risks to watch:**
 
@@ -171,16 +175,31 @@ Expect only additions (2 DNS records, the web resource, the domain mapping). CI 
 
 ### Stage 5: App deployment
 
-App change (frontend only; see [Backend access](#backend-access)): the ID-token helper and `BACKEND_AUDIENCE`. The backend needs no change: `SPRING_FLYWAY_ENABLED=false` already turns Flyway off.
+App change: the frontend's ID-token helper and `BACKEND_AUDIENCE` (see [Backend access](#backend-access)), and the backend's `SecurityConfig` limited to web mode so the migration run starts. `SPRING_FLYWAY_ENABLED=false` already turns Flyway off in the running service.
 
 `deploy.yml` gets the `build`, `migrate` and `deploy` jobs:
 
 - **Build**: both images, pushed to Artifact Registry tagged with the git SHA.
-- **Migrate**: run the just-built backend image in the runner with `SPRING_MAIN_WEB_APPLICATION_TYPE=none`, Flyway on, and `DB_URL`/`DB_PASSWORD` from `migrate-db-url`/`backend-db-password` (Neon's **direct**, non-pooler endpoint). This uses exactly the Flyway version and migrations the app ships with, Hibernate's `ddl-auto=validate` checks the entities against the migrated schema, and the app exits once started. Check while implementing that it exits cleanly and doesn't need `JWT_ISSUER_URI` in non-web mode. Fallback: the Flyway CLI image with `apps/backend/src/main/resources/db/migration`, version kept in sync with Spring Boot's.
+- **Migrate**: run the just-built backend image in the runner with `SPRING_MAIN_WEB_APPLICATION_TYPE=none`, Flyway on, and `DB_URL`/`DB_PASSWORD` from `migrate-db-url`/`backend-db-password` (Neon's **direct**, non-pooler endpoint). This uses exactly the Flyway version and migrations the app ships with, Hibernate's `ddl-auto=validate` checks the entities against the migrated schema, and the app exits once started. It exits cleanly; `JWT_ISSUER_URI` must resolve but can be a placeholder (see the notes below). Fallback: the Flyway CLI image with `apps/backend/src/main/resources/db/migration`, version kept in sync with Spring Boot's.
 - Migrations run before the new code is live, so the old revision runs against the new schema for a moment. **Migrations must be backward-compatible** (add first, remove in a later release).
 - **Deploy**: `gcloud run services update <service> --image <registry>/<service>:<sha>`, backend first, then frontend. Change only the image; Terraform owns everything else.
 
 **Done when:** signing in on `https://staging.todos.antro.dev` works and the signed-in pages load data from the backend.
+
+#### Stage 5 implementation notes
+
+**Done on branch `app-deployment`:**
+
+- Frontend: `src/server/id-token.server.ts` gets the ID token from the metadata server (no new dependency) and caches it until 5 minutes before it expires; `backendOptions` adds it as `X-Serverless-Authorization` when `BACKEND_AUDIENCE` is set. Terraform already sets `BACKEND_AUDIENCE` (Stage 3).
+- Backend (one change after all): `SecurityConfig` is `@ConditionalOnWebApplication`. In non-web mode there's no `HttpSecurity` bean, so the migration run failed to start without it.
+- `deploy.yml`: `build` (matrix, plain `docker build`/`push`), `migrate` and `deploy`, all as `deployer@`, with values derived rather than read from `terraform output`. `build` runs when `infra` succeeded or was skipped.
+- Migration run checked locally against the compose Postgres: it migrates, logs `Started`, and exits 0; a startup failure exits 1. It still needs `JWT_ISSUER_URI` to *resolve* (the resource server's `IssuerUriCondition` reads it), so the workflow passes a placeholder. `DB_USERNAME` is hard-coded to `todos` (the `role_name` in `infra/main.tf`), since `migrate-db-url` holds only the URL. There are no migrations in `db/migration` yet, so the first run is a no-op.
+
+**To do:**
+
+1. Merge to `main` and watch the first run. Untested until then: `docker push` and `gcloud secrets versions access` as `deployer@` via WIF, and `gcloud run services update` permissions.
+2. Open check from Stage 4: after the first deploy, run a local `terraform plan` (see Stage 4 notes) and confirm it shows no changes to the services, i.e. `gcloud` didn't set anything outside `ignore_changes`.
+3. Check the done criterion by hand: sign in on staging and load the signed-in pages.
 
 ### Stage 6: e2e against staging
 
