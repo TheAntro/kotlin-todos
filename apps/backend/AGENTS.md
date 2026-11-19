@@ -8,6 +8,7 @@ Spring Boot 4 + Kotlin (JDK 25) REST API for todos. Package root: `dev.antro.tod
 - `./gradlew test` – tests; use Testcontainers Postgres, so Docker must be running
 - `./gradlew spotlessCheck detekt` – format check (ktlint) + static analysis (`./gradlew spotlessApply` to format)
 - Swagger UI: `/swagger-ui.html`, OpenAPI: `/v3/api-docs`
+- `mise run api:generate` (repo root) – update the committed `openapi.json` after changing the API; `OpenApiSpecTest` fails until you do
 
 ## Stack
 
@@ -22,6 +23,7 @@ Spring Boot 4 + Kotlin (JDK 25) REST API for todos. Package root: `dev.antro.tod
 - REST endpoints under `/api`, e.g. `/api/todos` (GET list, POST) and `/api/todos/{id}` (GET, PATCH/PUT, DELETE).
 - Every todo belongs to a user (JWT `sub`); always filter by owner and return 404 for other users' todos.
 - Don't expose entities from controllers; use request/response DTOs with Bean Validation.
+- `openapi.json` is the frontend's contract (its client and Zod schemas are generated from it): non-null Kotlin properties become `required`, so keep DTO nullability accurate.
 - Never edit an applied migration; add a new one.
 - Kotlin style: ktlint_official (4-space indent), set in `.editorconfig`; keep detekt passing rather than suppressing rules.
 - Use constructor injection; prefer Kotlin data classes and immutability for DTOs.
